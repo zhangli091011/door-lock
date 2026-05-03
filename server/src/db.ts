@@ -6,7 +6,15 @@
  * 支持SQLite和PostgreSQL两种数据库
  */
 
-import sqlite3 from 'sqlite3';
+// 动态导入sqlite3（可选依赖）
+let sqlite3: any;
+try {
+  sqlite3 = require('sqlite3');
+} catch (e) {
+  // sqlite3未安装，仅在使用SQLite时会报错
+  sqlite3 = null;
+}
+
 import { Pool } from 'pg';
 
 /**
@@ -47,17 +55,20 @@ export interface QueryResult {
  */
 export class Database {
   private type: DatabaseType;
-  private sqliteDb?: sqlite3.Database;
+  private sqliteDb?: any; // 使用any因为sqlite3是可选的
   private pgPool?: Pool;
 
   constructor(config: DatabaseConfig) {
     this.type = config.type;
 
     if (this.type === DatabaseType.SQLITE) {
+      if (!sqlite3) {
+        throw new Error('SQLite is not installed. Please install sqlite3 package or use PostgreSQL.');
+      }
       if (!config.sqlitePath) {
         throw new Error('SQLite path is required for SQLite database');
       }
-      this.sqliteDb = new sqlite3.Database(config.sqlitePath, (err) => {
+      this.sqliteDb = new sqlite3.Database(config.sqlitePath, (err: any) => {
         if (err) {
           console.error('Failed to connect to SQLite database:', err);
           throw err;
@@ -105,7 +116,7 @@ export class Database {
         return reject(new Error('SQLite database not initialized'));
       }
 
-      this.sqliteDb.all(sql, params, (err, rows) => {
+      this.sqliteDb.all(sql, params, (err: any, rows: any) => {
         if (err) {
           return reject(err);
         }
@@ -173,7 +184,7 @@ export class Database {
         return reject(new Error('SQLite database not initialized'));
       }
 
-      this.sqliteDb.run(sql, params, function (err) {
+      this.sqliteDb.run(sql, params, function (this: any, err: any) {
         if (err) {
           return reject(err);
         }
@@ -238,7 +249,7 @@ export class Database {
   async close(): Promise<void> {
     if (this.type === DatabaseType.SQLITE && this.sqliteDb) {
       return new Promise((resolve, reject) => {
-        this.sqliteDb!.close((err) => {
+        this.sqliteDb!.close((err: any) => {
           if (err) {
             return reject(err);
           }
