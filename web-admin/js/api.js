@@ -6,9 +6,28 @@
 // API Configuration
 const API_CONFIG = {
     // Base URL - change this to your server URL
-    baseURL: window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
-        ? 'http://localhost:3000/api' 
-        : '/api',
+    // 优先级：
+    // 1. 如果是localhost，使用本地API
+    // 2. 如果设置了window.API_BASE_URL，使用自定义配置
+    // 3. 否则使用相对路径（通过nginx代理）
+    baseURL: (() => {
+        const hostname = window.location.hostname;
+        
+        // 本地开发环境
+        if (hostname === 'localhost' || hostname === '127.0.0.1') {
+            return 'http://localhost:3000/api';
+        }
+        
+        // 自定义API地址（可在index.html中设置）
+        if (window.API_BASE_URL) {
+            return window.API_BASE_URL;
+        }
+        
+        // 生产环境：使用相对路径，通过nginx代理
+        // 如果web界面在 http://example.com:8080
+        // API应该在 http://example.com:8080/api
+        return '/api';
+    })(),
     timeout: 10000, // 10 seconds
 };
 
