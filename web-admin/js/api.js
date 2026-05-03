@@ -5,11 +5,7 @@
 
 // API Configuration
 const API_CONFIG = {
-    // Base URL - change this to your server URL
-    // 优先级：
-    // 1. 如果是localhost，使用本地API
-    // 2. 如果设置了window.API_BASE_URL，使用自定义配置
-    // 3. 否则使用相对路径（通过nginx代理）
+    // Base URL - 直接指向后端API服务器
     baseURL: (() => {
         const hostname = window.location.hostname;
         
@@ -23,10 +19,9 @@ const API_CONFIG = {
             return window.API_BASE_URL;
         }
         
-        // 生产环境：使用相对路径，通过nginx代理
-        // 如果web界面在 http://example.com:8080
-        // API应该在 http://example.com:8080/api
-        return '/api';
+        // 生产环境：直接访问3000端口的API服务
+        // 如果你配置了nginx代理，改为 '/api'
+        return `http://${hostname}:3000/api`;
     })(),
     timeout: 10000, // 10 seconds
 };
