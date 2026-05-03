@@ -45,8 +45,8 @@ WORKDIR /app
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/package*.json ./
 
-# 只安装生产依赖
-RUN npm ci --only=production && \
+# 只安装生产依赖（跳过可选依赖如sqlite3）
+RUN npm ci --only=production --no-optional && \
     npm cache clean --force
 
 # 创建必要的目录
