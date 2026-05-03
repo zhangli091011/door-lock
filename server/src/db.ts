@@ -125,7 +125,14 @@ export class Database {
       throw new Error('PostgreSQL pool not initialized');
     }
 
-    const result = await this.pgPool.query(sql, params);
+    // Convert SQLite-style placeholders (?) to PostgreSQL-style ($1, $2, ...)
+    let paramIndex = 0;
+    const convertedSql = sql.replace(/\?/g, () => {
+      paramIndex++;
+      return `$${paramIndex}`;
+    });
+
+    const result = await this.pgPool.query(convertedSql, params);
     return {
       rows: result.rows,
       rowCount: result.rowCount || 0,
