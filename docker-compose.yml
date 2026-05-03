@@ -62,7 +62,8 @@ services:
       JWT_EXPIRES_IN: 24h
       
       # CORS配置
-      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:8080,http://localhost:3000}
+      # 根据你的nginx配置修改允许的域名
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost,https://yourdomain.com}
       
       # 速率限制
       RATE_LIMIT_DEVICE: 60
@@ -85,45 +86,16 @@ services:
       # 持久化SQLite数据（如果使用SQLite）
       - api_data:/app/data
     ports:
-      # 仅在开发环境暴露端口，生产环境通过Nginx访问
+      # 暴露API端口供外部nginx访问
       - "3000:3000"
     networks:
       - nfc-network
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 40s
-
-  # ----------------------------------------
-  # Nginx反向代理服务
-  # ----------------------------------------
-  nginx:
-    image: nginx:alpine
-    container_name: nfc-access-nginx
-    restart: unless-stopped
-    depends_on:
-      - api
-    ports:
-      - "80:80"
-      - "443:443"
-    volumes:
-      # Nginx配置文件
-      - ./nginx.conf:/etc/nginx/nginx.conf:ro
-      # SSL证书（生产环境）
-      - ./ssl:/etc/nginx/ssl:ro
-      # Web管理界面静态文件
-      - ./web-admin:/usr/share/nginx/html:ro
-      # Nginx日志
-      - nginx_logs:/var/log/nginx
-    networks:
-      - nfc-network
-    healthcheck:
-      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
 
   # ----------------------------------------
   # Redis缓存服务（可选）
@@ -163,10 +135,6 @@ volumes:
   
   # API数据（SQLite）
   api_data:
-    driver: local
-  
-  # Nginx日志
-  nginx_logs:
     driver: local
   
   # Redis数据

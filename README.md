@@ -282,10 +282,10 @@ RATE_LIMIT_IP=100       # 每分钟每IP最大请求数
 
 ### Docker部署
 
-使用Docker Compose一键部署所有服务。
+使用Docker Compose部署后端服务（不包含nginx）。
 
 ```bash
-# 启动所有服务
+# 启动所有服务（PostgreSQL + API）
 docker-compose up -d
 
 # 查看日志
@@ -295,7 +295,11 @@ docker-compose logs -f
 docker-compose down
 ```
 
-详细步骤请参考：[Docker部署指南](docs/deploy-docker.md)
+**注意**：本项目Docker配置不包含nginx，你需要自行部署nginx作为反向代理。
+
+详细步骤请参考：
+- [Docker部署指南](docs/deploy-docker.md)
+- [Nginx外部部署指南](NGINX_DEPLOYMENT.md) ⭐ 必读
 
 ## 安全建议
 

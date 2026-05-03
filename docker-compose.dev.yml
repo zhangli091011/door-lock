@@ -45,7 +45,7 @@ services:
       HOST: 0.0.0.0
       JWT_SECRET: dev_jwt_secret_key_for_development_only
       JWT_EXPIRES_IN: 24h
-      ALLOWED_ORIGINS: http://localhost:8080,http://localhost:3000
+      ALLOWED_ORIGINS: http://localhost:8080,http://localhost:3000,http://localhost
       LOG_LEVEL: debug
       LOG_CONSOLE: true
     volumes:
@@ -63,23 +63,6 @@ services:
     networks:
       - nfc-network-dev
     command: npm run dev
-
-  # ----------------------------------------
-  # Nginx反向代理（开发环境）
-  # ----------------------------------------
-  nginx:
-    image: nginx:alpine
-    container_name: nfc-access-nginx-dev
-    restart: unless-stopped
-    depends_on:
-      - api
-    ports:
-      - "8080:80"
-    volumes:
-      - ./nginx.dev.conf:/etc/nginx/nginx.conf:ro
-      - ./web-admin:/usr/share/nginx/html:ro
-    networks:
-      - nfc-network-dev
 
   # ----------------------------------------
   # Redis缓存服务（开发环境）
