@@ -1,0 +1,119 @@
+version: '3.8'
+
+# ========================================
+# ESP32 NFC 云门禁系统 - 开发环境Docker Compose
+# ========================================
+# 用于本地开发，支持热重载和调试
+# 使用方法：docker-compose -f docker-compose.dev.yml up
+# ========================================
+
+services:
+  # ----------------------------------------
+  # PostgreSQL数据库服务（开发环境）
+  # ----------------------------------------
+  db:
+    image: postgres:15-alpine
+    container_name: nfc-access-db-dev
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: access_control_dev
+      POSTGRES_USER: dev_user
+      POSTGRES_PASSWORD: dev_password
+    volumes:
+      - postgres_dev_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    networks:
+      - nfc-network-dev
+
+  # ----------------------------------------
+  # 后端API服务（开发环境，支持热重载）
+  # ----------------------------------------
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    container_name: nfc-access-api-dev
+    restart: unless-stopped
+    depends_on:
+      - db
+    environment:
+      DATABASE_TYPE: postgresql
+      DATABASE_URL: postgresql://dev_user:dev_password@db:5432/access_control_dev
+      PORT: 3000
+      NODE_ENV: development
+      HOST: 0.0.0.0
+      JWT_SECRET: dev_jwt_secret_key_for_development_only
+      JWT_EXPIRES_IN: 24h
+      ALLOWED_ORIGINS: http://localhost:8080,http://localhost:3000
+      LOG_LEVEL: debug
+      LOG_CONSOLE: true
+    volumes:
+      # 挂载源代码以支持热重载
+      - ./server/src:/app/src:ro
+      - ./server/package.json:/app/package.json:ro
+      - ./server/tsconfig.json:/app/tsconfig.json:ro
+      # 持久化日志和数据
+      - api_dev_logs:/app/logs
+      - api_dev_data:/app/data
+    ports:
+      - "3000:3000"
+      # 调试端口
+      - "9229:9229"
+    networks:
+      - nfc-network-dev
+    command: npm run dev
+
+  # ----------------------------------------
+  # Nginx反向代理（开发环境）
+  # ----------------------------------------
+  nginx:
+    image: nginx:alpine
+    container_name: nfc-access-nginx-dev
+    restart: unless-stopped
+    depends_on:
+      - api
+    ports:
+      - "8080:80"
+    volumes:
+      - ./nginx.dev.conf:/etc/nginx/nginx.conf:ro
+      - ./web-admin:/usr/share/nginx/html:ro
+    networks:
+      - nfc-network-dev
+
+  # ----------------------------------------
+  # Redis缓存服务（开发环境）
+  # ----------------------------------------
+  redis:
+    image: redis:7-alpine
+    container_name: nfc-access-redis-dev
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    networks:
+      - nfc-network-dev
+
+  # ----------------------------------------
+  # Adminer数据库管理工具（开发环境）
+  # ----------------------------------------
+  adminer:
+    image: adminer:latest
+    container_name: nfc-access-adminer
+    restart: unless-stopped
+    depends_on:
+      - db
+    ports:
+      - "8081:8080"
+    networks:
+      - nfc-network-dev
+    environment:
+      ADMINER_DEFAULT_SERVER: db
+
+volumes:
+  postgres_dev_data:
+  api_dev_logs:
+  api_dev_data:
+
+networks:
+  nfc-network-dev:
+    driver: bridge

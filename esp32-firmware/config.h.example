@@ -1,0 +1,96 @@
+#ifndef CONFIG_H
+#define CONFIG_H
+
+// ==================== WiFi配置 ====================
+#define WIFI_SSID "Your_WiFi_SSID"
+#define WIFI_PASSWORD "Your_WiFi_Password"
+
+// WiFi连接超时（毫秒）
+#define WIFI_CONNECT_TIMEOUT 10000
+// WiFi重连间隔（毫秒）
+#define WIFI_RECONNECT_INTERVAL 10000
+
+// ==================== API配置 ====================
+// 云端API基础URL（不要以斜杠结尾）
+#define API_BASE_URL "http://192.168.1.100:3000/api"
+
+// 设备ID（在云端注册设备时获得）
+#define DEVICE_ID "door_1"
+
+// 设备API Key（在云端注册设备时获得）
+#define API_KEY "EXAMPLE_API_KEY_32_CHARS_LONG_PLACEHOLDER"
+
+// 设备Secret Key（用于签名，在云端注册设备时获得）
+#define SECRET_KEY "your_device_secret_key_32chars_long_too"
+
+// API请求超时（毫秒）
+#define API_TIMEOUT 5000
+
+// ==================== 硬件GPIO配置 ====================
+// PN532 NFC模块（I2C接口）
+#define PN532_SDA_PIN 8
+#define PN532_SCL_PIN 9
+
+// 继电器控制引脚
+#define RELAY_PIN 4
+
+// 蜂鸣器引脚
+#define BUZZER_PIN 5
+
+// 出门按钮引脚
+#define EXIT_BUTTON_PIN 6
+
+// ==================== 继电器逻辑配置 ====================
+// 继电器使用NC（常闭）端子连接磁力锁
+// HIGH = 继电器闭合，NC端子通，磁力锁通电（锁定）
+// LOW = 继电器断开，NC端子断，磁力锁断电（开锁）
+#define RELAY_LOCK HIGH
+#define RELAY_UNLOCK LOW
+
+// ==================== 门锁配置 ====================
+// 开锁持续时间（毫秒）
+#define UNLOCK_DURATION 3000
+
+// ==================== 缓存配置 ====================
+// 本地缓存最大卡片数量
+#define CACHE_SIZE 50
+
+// 缓存有效期（秒）
+#define CACHE_EXPIRE 86400  // 24小时
+
+// ==================== NFC配置 ====================
+// NFC读取间隔（毫秒）
+#define NFC_READ_INTERVAL 500
+
+// NFC初始化重试次数
+#define NFC_INIT_RETRY 3
+
+// ==================== 蜂鸣器配置 ====================
+// 短鸣持续时间（毫秒）
+#define BEEP_SHORT_DURATION 100
+
+// 长鸣持续时间（毫秒）
+#define BEEP_LONG_DURATION 500
+
+// 蜂鸣器间隔（毫秒）
+#define BEEP_INTERVAL 100
+
+// ==================== 按钮配置 ====================
+// 按钮防抖延迟（毫秒）
+#define BUTTON_DEBOUNCE_DELAY 50
+
+// ==================== 调试配置 ====================
+// 串口波特率
+#define SERIAL_BAUD_RATE 115200
+
+// 启用调试输出（注释掉以禁用）
+#define DEBUG_ENABLED
+
+// ==================== 系统配置 ====================
+// 看门狗超时（秒）
+#define WATCHDOG_TIMEOUT 30
+
+// 心跳间隔（毫秒）
+#define HEARTBEAT_INTERVAL 60000
+
+#endif // CONFIG_H

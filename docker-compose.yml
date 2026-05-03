@@ -1,0 +1,184 @@
+version: '3.8'
+
+# ========================================
+# ESP32 NFC 云门禁系统 - Docker Compose配置
+# ========================================
+# 包含服务：后端API、PostgreSQL数据库、Nginx反向代理
+# ========================================
+
+services:
+  # ----------------------------------------
+  # PostgreSQL数据库服务
+  # ----------------------------------------
+  db:
+    image: postgres:15-alpine
+    container_name: nfc-access-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: access_control
+      POSTGRES_USER: access_user
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-change_this_password}
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=C"
+    volumes:
+      # 持久化数据库数据
+      - postgres_data:/var/lib/postgresql/data
+      # 数据库初始化脚本（可选）
+      - ./server/scripts/schema.postgresql.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    ports:
+      # 仅在开发环境暴露端口，生产环境应注释掉
+      - "5432:5432"
+    networks:
+      - nfc-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U access_user -d access_control"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ----------------------------------------
+  # 后端API服务
+  # ----------------------------------------
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: nfc-access-api
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      # 数据库配置
+      DATABASE_TYPE: postgresql
+      DATABASE_URL: postgresql://access_user:${DB_PASSWORD:-change_this_password}@db:5432/access_control
+      
+      # 服务器配置
+      PORT: 3000
+      NODE_ENV: production
+      HOST: 0.0.0.0
+      
+      # JWT配置
+      JWT_SECRET: ${JWT_SECRET:-your_random_secret_key_min_32_chars_change_this}
+      JWT_EXPIRES_IN: 24h
+      
+      # CORS配置
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:8080,http://localhost:3000}
+      
+      # 速率限制
+      RATE_LIMIT_DEVICE: 60
+      RATE_LIMIT_IP: 100
+      
+      # 日志配置
+      LOG_LEVEL: info
+      LOG_FILE: ./logs/app.log
+      LOG_CONSOLE: true
+      
+      # 系统配置
+      LOG_RETENTION_DAYS: 90
+      DEVICE_OFFLINE_MINUTES: 5
+      CACHE_EXPIRE_SECONDS: 86400
+      SIGNATURE_TIMESTAMP_TOLERANCE: 300
+      BCRYPT_ROUNDS: 10
+    volumes:
+      # 持久化日志
+      - api_logs:/app/logs
+      # 持久化SQLite数据（如果使用SQLite）
+      - api_data:/app/data
+    ports:
+      # 仅在开发环境暴露端口，生产环境通过Nginx访问
+      - "3000:3000"
+    networks:
+      - nfc-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # ----------------------------------------
+  # Nginx反向代理服务
+  # ----------------------------------------
+  nginx:
+    image: nginx:alpine
+    container_name: nfc-access-nginx
+    restart: unless-stopped
+    depends_on:
+      - api
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      # Nginx配置文件
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      # SSL证书（生产环境）
+      - ./ssl:/etc/nginx/ssl:ro
+      # Web管理界面静态文件
+      - ./web-admin:/usr/share/nginx/html:ro
+      # Nginx日志
+      - nginx_logs:/var/log/nginx
+    networks:
+      - nfc-network
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # ----------------------------------------
+  # Redis缓存服务（可选）
+  # ----------------------------------------
+  redis:
+    image: redis:7-alpine
+    container_name: nfc-access-redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD:-redis_password}
+    volumes:
+      - redis_data:/data
+    ports:
+      # 仅在开发环境暴露端口
+      - "6379:6379"
+    networks:
+      - nfc-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "--raw", "incr", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    profiles:
+      # 默认不启动，需要时使用：docker-compose --profile cache up
+      - cache
+
+# ----------------------------------------
+# 数据卷定义
+# ----------------------------------------
+volumes:
+  # PostgreSQL数据
+  postgres_data:
+    driver: local
+  
+  # API日志
+  api_logs:
+    driver: local
+  
+  # API数据（SQLite）
+  api_data:
+    driver: local
+  
+  # Nginx日志
+  nginx_logs:
+    driver: local
+  
+  # Redis数据
+  redis_data:
+    driver: local
+
+# ----------------------------------------
+# 网络定义
+# ----------------------------------------
+networks:
+  nfc-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16

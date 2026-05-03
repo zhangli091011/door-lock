@@ -1,0 +1,23 @@
+# Arduino build files
+*.elf
+*.hex
+*.bin
+*.map
+
+# PlatformIO
+.pio/
+.pioenvs/
+.piolibdeps/
+
+# Configuration (contains sensitive data)
+config.h
+
+# IDE
+.vscode/
+.idea/
+
+# Temporary files
+*~
+*.swp
+*.swo
+.DS_Store
