@@ -89,7 +89,7 @@ CREATE INDEX IF NOT EXISTS idx_devices_enabled ON devices(enabled);
 INSERT OR IGNORE INTO admins (username, password_hash, email) 
 VALUES (
   'admin', 
-  '$2b$10$rBV2kHYgLcIGxY4x8W1rXeJ7Z8QZ9X0Y1Z2Y3Z4Z5Z6Z7Z8Z9Z0Z1', 
+  '$2b$10$SxLHcgTB4qW4UYy4slSXReqH28DAMYEFFdyFxYL8SPPlYzpWQnV3K', 
   'admin@example.com'
 );
 
