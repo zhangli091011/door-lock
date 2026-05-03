@@ -9,6 +9,9 @@
 # ----------------------------------------
 FROM node:18-alpine AS builder
 
+# 安装编译工具（用于构建原生模块如bcrypt）
+RUN apk add --no-cache python3 make g++
+
 # 设置工作目录
 WORKDIR /app
 
@@ -29,10 +32,13 @@ RUN npm run build
 # ----------------------------------------
 FROM node:18-alpine
 
-# 安装必要的系统工具
+# 安装运行时依赖和编译工具（bcrypt需要）
 RUN apk add --no-cache \
     tini \
-    curl
+    curl \
+    python3 \
+    make \
+    g++
 
 # 创建非root用户
 RUN addgroup -g 1001 -S nodejs && \
@@ -48,6 +54,9 @@ COPY --from=builder /app/package*.json ./
 # 只安装生产依赖（跳过可选依赖如sqlite3）
 RUN npm ci --only=production --no-optional && \
     npm cache clean --force
+
+# 清理编译工具以减小镜像大小
+RUN apk del python3 make g++
 
 # 创建必要的目录
 RUN mkdir -p data logs && \
