@@ -65,9 +65,9 @@ const Auth = {
             
             const response = await API.login(username, password);
             
-            if (response.success && response.token) {
+            if (response.success && response.data && response.data.token) {
                 // Store JWT token
-                localStorage.setItem('jwt_token', response.token);
+                localStorage.setItem('jwt_token', response.data.token);
                 
                 // Store username
                 localStorage.setItem('username', username);
@@ -143,12 +143,26 @@ const Auth = {
      * Show main application
      */
     showMainApp: () => {
-        document.getElementById('loginPage').classList.add('d-none');
-        document.getElementById('mainApp').classList.remove('d-none');
+        console.log('Showing main application...');
+        const loginPage = document.getElementById('loginPage');
+        const mainApp = document.getElementById('mainApp');
+        
+        if (!loginPage || !mainApp) {
+            console.error('Login page or main app element not found!');
+            return;
+        }
+        
+        loginPage.classList.add('d-none');
+        mainApp.classList.remove('d-none');
         
         // Set current user display
         const username = localStorage.getItem('username') || '管理员';
-        document.getElementById('currentUser').textContent = username;
+        const currentUserEl = document.getElementById('currentUser');
+        if (currentUserEl) {
+            currentUserEl.textContent = username;
+        }
+        
+        console.log('Main application displayed successfully');
     },
 
     /**
@@ -219,17 +233,30 @@ document.addEventListener('DOMContentLoaded', () => {
             // Attempt login
             const result = await Auth.login(username, password, rememberMe);
             
+            console.log('Login result:', result);
+            
             if (result.success) {
                 // Login successful
+                console.log('Login successful, showing main app...');
                 showToast('登录成功', 'success');
                 Auth.showMainApp();
                 
                 // Load default page (status)
-                if (typeof App !== 'undefined' && App.loadPage) {
-                    App.loadPage('status');
-                }
+                // Use setTimeout to ensure App is initialized
+                setTimeout(() => {
+                    console.log('Attempting to load status page...');
+                    if (typeof App !== 'undefined' && App.loadPage) {
+                        console.log('App object found, loading page...');
+                        App.loadPage('status');
+                    } else {
+                        console.error('App object not found:', typeof App);
+                        console.log('Reloading page...');
+                        window.location.reload();
+                    }
+                }, 100);
             } else {
                 // Login failed
+                console.error('Login failed:', result.message);
                 showLoginError(result.message);
             }
         });
