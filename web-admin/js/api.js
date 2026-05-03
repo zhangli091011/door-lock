@@ -5,7 +5,8 @@
 
 // API Configuration
 const API_CONFIG = {
-    // Base URL - 直接指向后端API服务器
+    // Base URL - 使用相对路径，通过nginx代理
+    // 访问 door.sparkmaker.club 时，API会自动指向 door.sparkmaker.club/api
     baseURL: (() => {
         const hostname = window.location.hostname;
         
@@ -19,9 +20,9 @@ const API_CONFIG = {
             return window.API_BASE_URL;
         }
         
-        // 生产环境：直接访问3000端口的API服务
-        // 如果你配置了nginx代理，改为 '/api'
-        return `http://${hostname}:3000/api`;
+        // 生产环境：使用相对路径，通过nginx代理
+        // 例如：door.sparkmaker.club/api
+        return '/api';
     })(),
     timeout: 10000, // 10 seconds
 };
