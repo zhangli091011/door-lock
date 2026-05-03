@@ -4,7 +4,7 @@
  * This file demonstrates how to use signature verification in API endpoints
  */
 
-import express, { Request, Response } from 'express';
+import express, { Response } from 'express';
 import { Database, DatabaseType } from '../db';
 import { createDeviceAuthMiddleware, AuthenticatedRequest } from '../middleware/authMiddleware';
 import { generateSignature } from '../utils/signatureUtils';
@@ -28,7 +28,7 @@ export function setupExampleApp() {
   // Example endpoint: Check card access with signature verification
   app.post('/api/check-card', deviceAuth, async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const { uid, device_id, timestamp, signature } = req.body;
+      const { uid } = req.body;
       
       // At this point, the middleware has already verified:
       // 1. API Key is valid
