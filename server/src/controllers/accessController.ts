@@ -138,6 +138,86 @@ export class AccessController {
   }
 
   /**
+   * POST /api/access/log
+   * Report access log from ESP32 device (for cache-based access)
+   * 设备上报本地缓存验证的访问日志
+   */
+  async reportAccessLog(req: AuthenticatedRequest, res: Response): Promise<void> {
+    try {
+      const { uid, device_id, timestamp, allowed, source } = req.body;
+
+      // Validate required fields
+      if (!uid || !device_id || typeof allowed !== 'boolean' || !source) {
+        res.status(400).json({
+          success: false,
+          error: 'Missing required fields',
+          message: 'uid, device_id, allowed, and source are required',
+        });
+        return;
+      }
+
+      // Validate UID format
+      if (!this.isValidUid(uid)) {
+        res.status(400).json({
+          success: false,
+          error: 'Invalid UID format',
+          message: 'UID must be 8-14 hexadecimal characters',
+        });
+        return;
+      }
+
+      // Validate source
+      if (source !== 'cache' && source !== 'cloud') {
+        res.status(400).json({
+          success: false,
+          error: 'Invalid source',
+          message: 'source must be "cache" or "cloud"',
+        });
+        return;
+      }
+
+      // Get device name
+      const device = req.device;
+      const device_name = device?.name || device_id;
+
+      // Try to get card name from database
+      const cardRepository = new CardRepository(this.accessLogRepository['db']);
+      let card_name: string | null = null;
+      try {
+        const card = await cardRepository.findByUid(uid);
+        if (card) {
+          card_name = card.name;
+        }
+      } catch (error) {
+        // Card not found, continue without card_name
+      }
+
+      // Record access log to database
+      await this.accessLogRepository.create({
+        uid,
+        device_id,
+        allowed,
+        reason: null,
+        source,
+        card_name,
+        device_name,
+      });
+
+      res.status(201).json({
+        success: true,
+        message: 'Access log recorded successfully',
+      });
+    } catch (error) {
+      console.error('Error in reportAccessLog controller:', error);
+      res.status(500).json({
+        success: false,
+        error: 'Internal server error',
+        message: 'An error occurred while recording the access log',
+      });
+    }
+  }
+
+  /**
    * Validate UID format
    * UID must be 8-14 hexadecimal characters
    * 

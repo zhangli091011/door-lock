@@ -41,5 +41,23 @@ export function createAccessRoutes(db: Database): Router {
     (req: AuthenticatedRequest, res: Response) => accessController.checkCard(req, res)
   );
 
+  /**
+   * POST /api/access/log
+   * ESP32 device access log reporting endpoint
+   * 用于设备上报本地缓存验证的访问日志
+   * 
+   * Middleware chain:
+   * 1. Rate limiting
+   * 2. Device authentication (API Key only, no signature required for log reporting)
+   */
+  const deviceAuthNoSignature = createDeviceAuthMiddleware(db, false);
+  
+  router.post(
+    '/log',
+    rateLimitMiddleware(),
+    deviceAuthNoSignature,
+    (req: AuthenticatedRequest, res: Response) => accessController.reportAccessLog(req, res)
+  );
+
   return router;
 }

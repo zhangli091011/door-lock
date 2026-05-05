@@ -129,6 +129,59 @@ String generateSignature(String data) {
   return signature;
 }
 
+// ===== 上报访问日志到云端 =====
+bool reportAccessLog(String uid, bool allowed, String source) {
+  if (!wifiConnected) {
+    Serial.println("⚠️  Cannot report log: WiFi not connected");
+    return false;
+  }
+  
+  if (!timeSync) {
+    Serial.println("⚠️  Cannot report log: Time not synced");
+    return false;
+  }
+  
+  HTTPClient http;
+  String url = String(API_BASE_URL) + "/access/log";
+  
+  unsigned long timestamp = getCurrentTimestamp();
+  
+  // 构建JSON请求体
+  StaticJsonDocument<256> doc;
+  doc["uid"] = uid;
+  doc["device_id"] = DEVICE_ID;
+  doc["timestamp"] = timestamp;
+  doc["allowed"] = allowed;
+  doc["source"] = source;  // "cache" 或 "cloud"
+  
+  String requestBody;
+  serializeJson(doc, requestBody);
+  
+  Serial.println("📤 Reporting access log: " + requestBody);
+  
+  http.begin(url);
+  http.addHeader("Content-Type", "application/json");
+  http.addHeader("X-API-Key", API_KEY);
+  http.addHeader("X-Device-ID", DEVICE_ID);
+  http.setTimeout(5000);
+  
+  int httpCode = http.POST(requestBody);
+  
+  if (httpCode == 200 || httpCode == 201) {
+    Serial.println("✅ Access log reported successfully");
+    http.end();
+    return true;
+  } else {
+    Serial.println("⚠️  Failed to report log (HTTP " + String(httpCode) + ")");
+    if (httpCode > 0) {
+      String response = http.getString();
+      Serial.println("   Response: " + response);
+    }
+    http.end();
+    return false;
+  }
+}
+
 // ===== 查找缓存 =====
 int findInCache(String uid) {
   unsigned long now = millis() / 1000;
@@ -286,13 +339,20 @@ bool checkCardCloud(String uid) {
 }
 
 // ===== 验证卡片 =====
-bool checkCard(String uid) {
+bool checkCard(String uid, bool &usedCache) {
+  usedCache = false;
+  
   // 1. 先查缓存
   int cacheIndex = findInCache(uid);
   if (cacheIndex >= 0) {
     Serial.println("Found in cache: " + uid);
     bool allowed = cache[cacheIndex].allowed;
     Serial.println(allowed ? "✅ Access ALLOWED (cache)" : "❌ Access DENIED (cache)");
+    usedCache = true;
+    
+    // 异步上报缓存访问日志到云端
+    reportAccessLog(uid, allowed, "cache");
+    
     return allowed;
   }
   
@@ -516,7 +576,8 @@ void loop() {
     lastAccessTime = millis();
     
     // 验证卡片
-    bool allowed = checkCard(cardUID);
+    bool usedCache = false;
+    bool allowed = checkCard(cardUID, usedCache);
     
     if (allowed) {
       lastResult = "ALLOWED";
