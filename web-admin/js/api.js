@@ -245,75 +245,77 @@ function hideLoading() {
 }
 
 /**
- * Format date to local string
+ * Format date to local string (强制显示UTC+8时间)
  * @param {string} dateString - ISO date string or timestamp
  * @returns {string} Formatted date string
  */
 function formatDate(dateString) {
     if (!dateString) return '-';
     
-    // 确保正确解析ISO字符串或时间戳
+    // 解析时间
     let date = new Date(dateString);
     
     // 检查日期是否有效
     if (isNaN(date.getTime())) return '-';
     
-    // 如果时间字符串不包含时区信息，假设它是UTC+8时间
-    if (typeof dateString === 'string' && !dateString.includes('Z') && !dateString.includes('+')) {
-        // 添加+08:00时区标记
-        date = new Date(dateString + '+08:00');
-    }
+    // 强制加8小时转换为UTC+8
+    const utc8Date = new Date(date.getTime() + (8 * 60 * 60 * 1000));
     
-    // 使用本地时区格式化（服务器已设置为UTC+8）
-    const year = date.getFullYear();
-    const month = String(date.getMonth() + 1).padStart(2, '0');
-    const day = String(date.getDate()).padStart(2, '0');
-    const hours = String(date.getHours()).padStart(2, '0');
-    const minutes = String(date.getMinutes()).padStart(2, '0');
-    const seconds = String(date.getSeconds()).padStart(2, '0');
+    // 使用UTC方法获取时间（此时已经是UTC+8）
+    const year = utc8Date.getUTCFullYear();
+    const month = String(utc8Date.getUTCMonth() + 1).padStart(2, '0');
+    const day = String(utc8Date.getUTCDate()).padStart(2, '0');
+    const hours = String(utc8Date.getUTCHours()).padStart(2, '0');
+    const minutes = String(utc8Date.getUTCMinutes()).padStart(2, '0');
+    const seconds = String(utc8Date.getUTCSeconds()).padStart(2, '0');
     
     return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
 }
 
 /**
- * Format time to HH:MM:SS
+ * Format time to HH:MM:SS (强制显示UTC+8时间)
  * @param {string} dateString - ISO date string or timestamp
  * @returns {string} Formatted time string
  */
 function formatTime(dateString) {
     if (!dateString) return '-';
     
-    // 确保正确解析ISO字符串或时间戳
+    // 解析时间
     let date = new Date(dateString);
     
     // 检查日期是否有效
     if (isNaN(date.getTime())) return '-';
     
-    // 如果时间字符串不包含时区信息，假设它是UTC+8时间
-    if (typeof dateString === 'string' && !dateString.includes('Z') && !dateString.includes('+')) {
-        // 添加+08:00时区标记
-        date = new Date(dateString + '+08:00');
-    }
+    // 强制加8小时转换为UTC+8
+    const utc8Date = new Date(date.getTime() + (8 * 60 * 60 * 1000));
     
-    // 使用本地时区格式化
-    const hours = String(date.getHours()).padStart(2, '0');
-    const minutes = String(date.getMinutes()).padStart(2, '0');
-    const seconds = String(date.getSeconds()).padStart(2, '0');
+    // 使用UTC方法获取时间（此时已经是UTC+8）
+    const hours = String(utc8Date.getUTCHours()).padStart(2, '0');
+    const minutes = String(utc8Date.getUTCMinutes()).padStart(2, '0');
+    const seconds = String(utc8Date.getUTCSeconds()).padStart(2, '0');
     
     return `${hours}:${minutes}:${seconds}`;
 }
 
 /**
- * Calculate time ago
+ * Calculate time ago (强制使用UTC+8时间计算)
  * @param {string} dateString - ISO date string
  * @returns {string} Time ago string
  */
 function timeAgo(dateString) {
     if (!dateString) return '-';
-    const date = new Date(dateString);
-    const now = new Date();
-    const seconds = Math.floor((now - date) / 1000);
     
+    // 解析时间并加8小时
+    const date = new Date(dateString);
+    const utc8Date = new Date(date.getTime() + (8 * 60 * 60 * 1000));
+    
+    // 当前时间也加8小时
+    const now = new Date();
+    const utc8Now = new Date(now.getTime() + (8 * 60 * 60 * 1000));
+    
+    const seconds = Math.floor((utc8Now - utc8Date) / 1000);
+    
+    if (seconds < 0) return '刚刚';
     if (seconds < 60) return `${seconds}秒前`;
     if (seconds < 3600) return `${Math.floor(seconds / 60)}分钟前`;
     if (seconds < 86400) return `${Math.floor(seconds / 3600)}小时前`;
