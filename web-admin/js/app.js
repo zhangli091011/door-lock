@@ -436,13 +436,21 @@ const App = {
 
     /**
      * Check if device is online (last seen < 5 minutes)
+     * 使用UTC+8时间判断设备是否在线
      */
     isDeviceOnline: (lastSeen) => {
         if (!lastSeen) return false;
-        const lastSeenTime = new Date(lastSeen).getTime();
-        const now = Date.now();
+        
+        // 解析最后在线时间并加8小时
+        const lastSeenDate = new Date(lastSeen);
+        const lastSeenUTC8 = new Date(lastSeenDate.getTime() + (8 * 60 * 60 * 1000));
+        
+        // 当前时间也加8小时
+        const now = new Date();
+        const nowUTC8 = new Date(now.getTime() + (8 * 60 * 60 * 1000));
+        
         const fiveMinutes = 5 * 60 * 1000;
-        return (now - lastSeenTime) < fiveMinutes;
+        return (nowUTC8.getTime() - lastSeenUTC8.getTime()) < fiveMinutes;
     },
 
     /**
@@ -451,10 +459,11 @@ const App = {
     loadLogsPage: () => {
         const content = document.getElementById('pageContent');
         
-        // Get today's date range
-        const today = new Date();
-        const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate());
-        const todayEnd = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 23, 59, 59);
+        // Get today's date range (使用UTC+8时间)
+        const now = new Date();
+        const utc8Now = new Date(now.getTime() + (8 * 60 * 60 * 1000));
+        const todayStart = new Date(utc8Now.getUTCFullYear(), utc8Now.getUTCMonth(), utc8Now.getUTCDate());
+        const todayEnd = new Date(utc8Now.getUTCFullYear(), utc8Now.getUTCMonth(), utc8Now.getUTCDate(), 23, 59, 59);
         
         content.innerHTML = `
             <div class="page-header">
@@ -626,30 +635,33 @@ const App = {
     },
 
     /**
-     * Set log time range
+     * Set log time range (使用UTC+8时间)
      */
     setLogTimeRange: (range) => {
+        // 获取当前UTC+8时间
         const now = new Date();
+        const utc8Now = new Date(now.getTime() + (8 * 60 * 60 * 1000));
+        
         let startTime, endTime;
         
         switch (range) {
             case 'today':
-                startTime = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-                endTime = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59);
+                startTime = new Date(utc8Now.getUTCFullYear(), utc8Now.getUTCMonth(), utc8Now.getUTCDate());
+                endTime = new Date(utc8Now.getUTCFullYear(), utc8Now.getUTCMonth(), utc8Now.getUTCDate(), 23, 59, 59);
                 break;
             case 'yesterday':
-                startTime = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1);
-                endTime = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1, 23, 59, 59);
+                startTime = new Date(utc8Now.getUTCFullYear(), utc8Now.getUTCMonth(), utc8Now.getUTCDate() - 1);
+                endTime = new Date(utc8Now.getUTCFullYear(), utc8Now.getUTCMonth(), utc8Now.getUTCDate() - 1, 23, 59, 59);
                 break;
             case 'week':
-                const weekStart = new Date(now);
-                weekStart.setDate(now.getDate() - now.getDay());
-                startTime = new Date(weekStart.getFullYear(), weekStart.getMonth(), weekStart.getDate());
-                endTime = now;
+                const weekStart = new Date(utc8Now);
+                weekStart.setUTCDate(utc8Now.getUTCDate() - utc8Now.getUTCDay());
+                startTime = new Date(weekStart.getUTCFullYear(), weekStart.getUTCMonth(), weekStart.getUTCDate());
+                endTime = utc8Now;
                 break;
             case 'month':
-                startTime = new Date(now.getFullYear(), now.getMonth(), 1);
-                endTime = now;
+                startTime = new Date(utc8Now.getUTCFullYear(), utc8Now.getUTCMonth(), 1);
+                endTime = utc8Now;
                 break;
             case 'all':
                 document.getElementById('logStartTime').value = '';
@@ -657,7 +669,7 @@ const App = {
                 return;
         }
         
-        // Format to datetime-local input format
+        // Format to datetime-local input format (使用UTC+8时间)
         const formatDateTime = (date) => {
             const year = date.getFullYear();
             const month = String(date.getMonth() + 1).padStart(2, '0');
@@ -739,7 +751,12 @@ const App = {
                 const link = document.createElement('a');
                 const url = URL.createObjectURL(blob);
                 
-                const filename = `access_logs_${new Date().toISOString().slice(0, 10)}.csv`;
+                // 使用UTC+8时间生成文件名
+                const now = new Date();
+                const utc8Now = new Date(now.getTime() + (8 * 60 * 60 * 1000));
+                const dateStr = utc8Now.toISOString().slice(0, 10);
+                const filename = `access_logs_${dateStr}.csv`;
+                
                 link.setAttribute('href', url);
                 link.setAttribute('download', filename);
                 link.style.visibility = 'hidden';
