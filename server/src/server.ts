@@ -30,6 +30,9 @@ import {
 // Load environment variables
 dotenv.config();
 
+// Force timezone to UTC+8 (Asia/Shanghai)
+process.env.TZ = 'Asia/Shanghai';
+
 // Configure Winston logger
 const logDir = path.join(__dirname, '../logs');
 if (!fs.existsSync(logDir)) {

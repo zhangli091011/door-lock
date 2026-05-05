@@ -246,35 +246,61 @@ function hideLoading() {
 
 /**
  * Format date to local string
- * @param {string} dateString - ISO date string
+ * @param {string} dateString - ISO date string or timestamp
  * @returns {string} Formatted date string
  */
 function formatDate(dateString) {
     if (!dateString) return '-';
-    const date = new Date(dateString);
-    return date.toLocaleString('zh-CN', {
-        year: 'numeric',
-        month: '2-digit',
-        day: '2-digit',
-        hour: '2-digit',
-        minute: '2-digit',
-        second: '2-digit',
-    });
+    
+    // 确保正确解析ISO字符串或时间戳
+    let date = new Date(dateString);
+    
+    // 检查日期是否有效
+    if (isNaN(date.getTime())) return '-';
+    
+    // 如果时间字符串不包含时区信息，假设它是UTC+8时间
+    if (typeof dateString === 'string' && !dateString.includes('Z') && !dateString.includes('+')) {
+        // 添加+08:00时区标记
+        date = new Date(dateString + '+08:00');
+    }
+    
+    // 使用本地时区格式化（服务器已设置为UTC+8）
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    const hours = String(date.getHours()).padStart(2, '0');
+    const minutes = String(date.getMinutes()).padStart(2, '0');
+    const seconds = String(date.getSeconds()).padStart(2, '0');
+    
+    return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
 }
 
 /**
  * Format time to HH:MM:SS
- * @param {string} dateString - ISO date string
+ * @param {string} dateString - ISO date string or timestamp
  * @returns {string} Formatted time string
  */
 function formatTime(dateString) {
     if (!dateString) return '-';
-    const date = new Date(dateString);
-    return date.toLocaleTimeString('zh-CN', {
-        hour: '2-digit',
-        minute: '2-digit',
-        second: '2-digit',
-    });
+    
+    // 确保正确解析ISO字符串或时间戳
+    let date = new Date(dateString);
+    
+    // 检查日期是否有效
+    if (isNaN(date.getTime())) return '-';
+    
+    // 如果时间字符串不包含时区信息，假设它是UTC+8时间
+    if (typeof dateString === 'string' && !dateString.includes('Z') && !dateString.includes('+')) {
+        // 添加+08:00时区标记
+        date = new Date(dateString + '+08:00');
+    }
+    
+    // 使用本地时区格式化
+    const hours = String(date.getHours()).padStart(2, '0');
+    const minutes = String(date.getMinutes()).padStart(2, '0');
+    const seconds = String(date.getSeconds()).padStart(2, '0');
+    
+    return `${hours}:${minutes}:${seconds}`;
 }
 
 /**
