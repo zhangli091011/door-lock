@@ -136,6 +136,330 @@
         </div>
     </div>
 
+    <!-- Add Device Modal -->
+    <div class="modal fade" id="addDeviceModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title"><i class="bi bi-plus-circle"></i> 注册新设备</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="addDeviceForm">
+                        <div class="mb-3">
+                            <label for="deviceId" class="form-label">设备ID <span class="text-danger">*</span></label>
+                            <input type="text" class="form-control" id="deviceId" required 
+                                   placeholder="例如: door-001" 
+                                   pattern="[a-zA-Z0-9_-]+" 
+                                   maxlength="50">
+                            <div class="form-text">只能包含字母、数字、下划线和连字符</div>
+                        </div>
+                        <div class="mb-3">
+                            <label for="deviceName" class="form-label">设备名称 <span class="text-danger">*</span></label>
+                            <input type="text" class="form-control" id="deviceName" required 
+                                   placeholder="例如: 前门门禁" 
+                                   maxlength="100">
+                        </div>
+                        <div class="mb-3">
+                            <label for="deviceLocation" class="form-label">位置</label>
+                            <input type="text" class="form-control" id="deviceLocation" 
+                                   placeholder="例如: 一楼大厅" 
+                                   maxlength="200">
+                        </div>
+                        <div class="mb-3">
+                            <label for="deviceMac" class="form-label">MAC地址</label>
+                            <input type="text" class="form-control" id="deviceMac" 
+                                   placeholder="例如: AA:BB:CC:DD:EE:FF" 
+                                   pattern="([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}">
+                            <div class="form-text">格式: XX:XX:XX:XX:XX:XX</div>
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                    <button type="button" class="btn btn-primary" onclick="App.submitAddDevice()">
+                        <i class="bi bi-check-circle"></i> 注册设备
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Edit Device Modal -->
+    <div class="modal fade" id="editDeviceModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title"><i class="bi bi-pencil"></i> 编辑设备</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="editDeviceForm">
+                        <input type="hidden" id="editDeviceId">
+                        <div class="mb-3">
+                            <label class="form-label">设备ID</label>
+                            <input type="text" class="form-control" id="editDeviceIdDisplay" disabled>
+                        </div>
+                        <div class="mb-3">
+                            <label for="editDeviceName" class="form-label">设备名称 <span class="text-danger">*</span></label>
+                            <input type="text" class="form-control" id="editDeviceName" required 
+                                   maxlength="100">
+                        </div>
+                        <div class="mb-3">
+                            <label for="editDeviceLocation" class="form-label">位置</label>
+                            <input type="text" class="form-control" id="editDeviceLocation" 
+                                   maxlength="200">
+                        </div>
+                        <div class="mb-3">
+                            <label for="editDeviceMac" class="form-label">MAC地址</label>
+                            <input type="text" class="form-control" id="editDeviceMac" 
+                                   pattern="([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}">
+                            <div class="form-text">格式: XX:XX:XX:XX:XX:XX</div>
+                        </div>
+                        <div class="mb-3">
+                            <div class="form-check form-switch">
+                                <input class="form-check-input" type="checkbox" id="editDeviceEnabled">
+                                <label class="form-check-label" for="editDeviceEnabled">启用设备</label>
+                            </div>
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                    <button type="button" class="btn btn-primary" onclick="App.submitEditDevice()">
+                        <i class="bi bi-check-circle"></i> 保存更改
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Device Credentials Modal -->
+    <div class="modal fade" id="deviceCredentialsModal" tabindex="-1">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header bg-success text-white">
+                    <h5 class="modal-title"><i class="bi bi-check-circle-fill"></i> 设备注册成功</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="alert alert-warning">
+                        <i class="bi bi-exclamation-triangle-fill"></i>
+                        <strong>重要提示：</strong>请妥善保存以下凭证信息，关闭此窗口后将无法再次查看Secret Key！
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">设备ID</label>
+                        <div class="input-group">
+                            <input type="text" class="form-control" id="credDeviceId" readonly>
+                            <button class="btn btn-outline-secondary" type="button" onclick="App.copyToClipboard('credDeviceId')">
+                                <i class="bi bi-clipboard"></i> 复制
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">设备名称</label>
+                        <input type="text" class="form-control" id="credDeviceName" readonly>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">API Key</label>
+                        <div class="input-group">
+                            <input type="text" class="form-control font-monospace" id="credApiKey" readonly>
+                            <button class="btn btn-outline-secondary" type="button" onclick="App.copyToClipboard('credApiKey')">
+                                <i class="bi bi-clipboard"></i> 复制
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Secret Key</label>
+                        <div class="input-group">
+                            <input type="text" class="form-control font-monospace" id="credSecretKey" readonly>
+                            <button class="btn btn-outline-secondary" type="button" onclick="App.copyToClipboard('credSecretKey')">
+                                <i class="bi bi-clipboard"></i> 复制
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <div class="alert alert-info">
+                        <i class="bi bi-info-circle-fill"></i>
+                        <strong>配置说明：</strong>
+                        <ol class="mb-0 mt-2">
+                            <li>将API Key和Secret Key配置到ESP32设备的config.h文件中</li>
+                            <li>设备使用这些凭证进行身份验证和签名</li>
+                            <li>请确保Secret Key的安全，不要泄露给他人</li>
+                        </ol>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-primary" data-bs-dismiss="modal">
+                        <i class="bi bi-check-lg"></i> 我已保存凭证
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Add Card Modal -->
+    <div class="modal fade" id="addCardModal" tabindex="-1">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title"><i class="bi bi-plus-circle"></i> 添加卡片</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="addCardForm">
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label for="cardUid" class="form-label">卡片UID <span class="text-danger">*</span></label>
+                                <input type="text" class="form-control font-monospace" id="cardUid" required 
+                                       placeholder="例如: 04A1B2C3D4E5F6" 
+                                       pattern="[0-9A-Fa-f]{8,14}"
+                                       maxlength="14">
+                                <div class="form-text">8-14位十六进制字符</div>
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label for="cardName" class="form-label">姓名 <span class="text-danger">*</span></label>
+                                <input type="text" class="form-control" id="cardName" required 
+                                       placeholder="例如: 张三" 
+                                       maxlength="100">
+                            </div>
+                        </div>
+                        
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label for="cardAccessStart" class="form-label">访问开始时间</label>
+                                <input type="datetime-local" class="form-control" id="cardAccessStart">
+                                <div class="form-text">留空表示不限制</div>
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label for="cardAccessEnd" class="form-label">访问结束时间</label>
+                                <input type="datetime-local" class="form-control" id="cardAccessEnd">
+                                <div class="form-text">留空表示不限制</div>
+                            </div>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label for="cardTimeSlots" class="form-label">时间段限制</label>
+                            <input type="text" class="form-control" id="cardTimeSlots" 
+                                   placeholder="例如: 09:00-12:00, 14:00-18:00">
+                            <div class="form-text">多个时间段用逗号分隔，格式: HH:MM-HH:MM</div>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label for="cardAllowedDevices" class="form-label">允许的设备</label>
+                            <input type="text" class="form-control" id="cardAllowedDevices" 
+                                   placeholder="例如: door-001, door-002">
+                            <div class="form-text">多个设备ID用逗号分隔，留空表示所有设备</div>
+                        </div>
+                        
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <div class="form-check form-switch">
+                                    <input class="form-check-input" type="checkbox" id="cardEnabled" checked>
+                                    <label class="form-check-label" for="cardEnabled">启用卡片</label>
+                                </div>
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <div class="form-check form-switch">
+                                    <input class="form-check-input" type="checkbox" id="cardCacheable" checked>
+                                    <label class="form-check-label" for="cardCacheable">允许缓存</label>
+                                    <div class="form-text">允许设备缓存此卡片信息</div>
+                                </div>
+                            </div>
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                    <button type="button" class="btn btn-primary" onclick="App.submitAddCard()">
+                        <i class="bi bi-check-circle"></i> 添加卡片
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Edit Card Modal -->
+    <div class="modal fade" id="editCardModal" tabindex="-1">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title"><i class="bi bi-pencil"></i> 编辑卡片</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="editCardForm">
+                        <input type="hidden" id="editCardUid">
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label">卡片UID</label>
+                                <input type="text" class="form-control font-monospace" id="editCardUidDisplay" disabled>
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label for="editCardName" class="form-label">姓名 <span class="text-danger">*</span></label>
+                                <input type="text" class="form-control" id="editCardName" required 
+                                       maxlength="100">
+                            </div>
+                        </div>
+                        
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label for="editCardAccessStart" class="form-label">访问开始时间</label>
+                                <input type="datetime-local" class="form-control" id="editCardAccessStart">
+                                <div class="form-text">留空表示不限制</div>
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label for="editCardAccessEnd" class="form-label">访问结束时间</label>
+                                <input type="datetime-local" class="form-control" id="editCardAccessEnd">
+                                <div class="form-text">留空表示不限制</div>
+                            </div>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label for="editCardTimeSlots" class="form-label">时间段限制</label>
+                            <input type="text" class="form-control" id="editCardTimeSlots" 
+                                   placeholder="例如: 09:00-12:00, 14:00-18:00">
+                            <div class="form-text">多个时间段用逗号分隔，格式: HH:MM-HH:MM</div>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label for="editCardAllowedDevices" class="form-label">允许的设备</label>
+                            <input type="text" class="form-control" id="editCardAllowedDevices" 
+                                   placeholder="例如: door-001, door-002">
+                            <div class="form-text">多个设备ID用逗号分隔，留空表示所有设备</div>
+                        </div>
+                        
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <div class="form-check form-switch">
+                                    <input class="form-check-input" type="checkbox" id="editCardEnabled">
+                                    <label class="form-check-label" for="editCardEnabled">启用卡片</label>
+                                </div>
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <div class="form-check form-switch">
+                                    <input class="form-check-input" type="checkbox" id="editCardCacheable">
+                                    <label class="form-check-label" for="editCardCacheable">允许缓存</label>
+                                    <div class="form-text">允许设备缓存此卡片信息</div>
+                                </div>
+                            </div>
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                    <button type="button" class="btn btn-primary" onclick="App.submitEditCard()">
+                        <i class="bi bi-check-circle"></i> 保存更改
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Bootstrap 5 JS Bundle -->
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <!-- Axios for HTTP requests -->

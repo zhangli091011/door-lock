@@ -25,5 +25,23 @@ tmp/
 temp/
 *.tmp
 
-# Kiro specs (optional - uncomment if you don't want to track specs)
-# .kiro/
+# Kiro specs
+.kiro/
+
+# Node modules
+node_modules/
+
+# Build outputs
+dist/
+build/
+coverage/
+
+# Database files
+*.sqlite
+*.db
+
+# Test files
+test-*.js
+*-test.js
+simulate-*.js
+debug-*.js

@@ -1,396 +1,238 @@
 /**
- * ESP32 NFC 云门禁系统 - 主程序
- * 
- * 功能：
- * - NFC卡片读取（PN532模块，I2C接口）
- * - WiFi连接和管理
- * - 云端权限验证（HTTP/HTTPS API）
- * - 本地缓存机制（离线验证）
- * - 继电器控制磁力锁
- * - 出门按钮处理
- * - 蜂鸣器反馈
- * 
- * 硬件：
- * - ESP32-S3开发板
- * - PN532 NFC模块（I2C: GPIO8/9）
- * - 继电器模块（GPIO4）
- * - 磁力锁（12V，NC端子）
- * - 蜂鸣器（GPIO5）
- * - 出门按钮（GPIO6）
- * 
- * 作者：ESP32 NFC Access Control System
- * 版本：1.0.0
+ * ESP32 NFC Cloud Access Control System
+ * 基于可用版本改进，添加云端验证功能
  */
 
-#include <Wire.h>
 #include <WiFi.h>
 #include <HTTPClient.h>
 #include <ArduinoJson.h>
+#include <Wire.h>
 #include <Adafruit_PN532.h>
+#include <mbedtls/md.h>
+#include <time.h>
 #include "config.h"
 
-// ==================== 全局对象 ====================
-// PN532 NFC模块（I2C接口）
-Adafruit_PN532 nfc(PN532_SDA_PIN, PN532_SCL_PIN);
+// ===== NTP配置 =====
+const char* NTP_SERVER = "ntp.aliyun.com";  // 使用阿里云NTP服务器
+const long GMT_OFFSET_SEC = 0;  // 使用UTC时间（标准Unix时间戳）
+const int DAYLIGHT_OFFSET_SEC = 0;
 
-// HTTP客户端
-HTTPClient http;
+// ===== NFC =====
+Adafruit_PN532 nfc(-1, -1);
 
-// ==================== 全局变量 ====================
-// WiFi连接状态
+// ===== WiFi状态 =====
 bool wifiConnected = false;
-unsigned long lastWiFiCheckTime = 0;
+bool timeSync = false;  // NTP时间同步状态
+unsigned long lastWiFiCheck = 0;
+const unsigned long WIFI_CHECK_INTERVAL = 30000; // 30秒检查一次
 
-// NFC读取状态
-bool nfcInitialized = false;
-unsigned long lastNFCReadTime = 0;
+// ===== 心跳包 =====
+unsigned long lastHeartbeat = 0;
+// HEARTBEAT_INTERVAL 在 config.h 中定义
+const String HEARTBEAT_UID = "FFFFFFFFFFFF";  // 心跳专用UID（全F，12位十六进制）
 
-// 出门按钮状态
-int lastButtonState = HIGH;
-unsigned long lastDebounceTime = 0;
-
-// 门锁状态
-bool doorUnlocked = false;
-unsigned long unlockStartTime = 0;
-
-// 缓存结构
-struct CacheEntry {
+// ===== 本地缓存 =====
+struct CachedCard {
   String uid;
   bool allowed;
   unsigned long timestamp;
+  bool valid;
 };
 
-// 本地缓存数组
-CacheEntry localCache[CACHE_SIZE];
+CachedCard cache[CACHE_SIZE];
 int cacheCount = 0;
 
-// ==================== 函数声明 ====================
-void setupWiFi();
-void setupNFC();
-void setupHardware();
-void checkWiFiConnection();
-bool checkNFCCard(String& uid);
-bool verifyWithCloud(String uid, bool& cacheable);
-bool verifyWithCache(String uid);
-void updateCache(String uid, bool allowed);
-void unlockDoor();
-void lockDoor();
-void handleExitButton();
-void beep(int times, int duration, int interval);
-String generateSignature(String uid, String deviceId, unsigned long timestamp);
-String uidToString(uint8_t* uid, uint8_t uidLength);
+// ===== 统计信息 =====
+String lastCard = "None";
+String lastResult = "None";
+unsigned long lastAccessTime = 0;
 
-// ==================== 初始化函数 ====================
-void setup() {
-  // 初始化串口
-  Serial.begin(SERIAL_BAUD_RATE);
-  delay(1000);
-  
-  #ifdef DEBUG_ENABLED
-  Serial.println("\n\n=================================");
-  Serial.println("ESP32 NFC 云门禁系统");
-  Serial.println("版本: 1.0.0");
-  Serial.println("=================================\n");
-  #endif
-  
-  // 初始化硬件
-  setupHardware();
-  
-  // 初始化WiFi
-  setupWiFi();
-  
-  // 初始化NFC模块
-  setupNFC();
-  
-  #ifdef DEBUG_ENABLED
-  Serial.println("\n系统初始化完成！");
-  Serial.println("等待刷卡...\n");
-  #endif
-  
-  // 启动提示音
-  beep(2, BEEP_SHORT_DURATION, BEEP_INTERVAL);
-}
-
-// ==================== 主循环 ====================
-void loop() {
-  // 检查WiFi连接
-  checkWiFiConnection();
-  
-  // 处理出门按钮
-  handleExitButton();
-  
-  // 检查门锁状态（自动重新锁门）
-  if (doorUnlocked && (millis() - unlockStartTime >= UNLOCK_DURATION)) {
-    lockDoor();
+// ===== 获取当前Unix时间戳 =====
+unsigned long getCurrentTimestamp() {
+  if (!timeSync) {
+    // 如果时间未同步，返回0（会导致签名验证失败，但不会崩溃）
+    Serial.println("⚠️  Warning: Time not synced, using fallback");
+    return 0;
   }
   
-  // NFC卡片检测（限制读取频率）
-  if (millis() - lastNFCReadTime >= NFC_READ_INTERVAL) {
-    lastNFCReadTime = millis();
-    
-    String uid;
-    if (checkNFCCard(uid)) {
-      #ifdef DEBUG_ENABLED
-      Serial.println("检测到卡片: " + uid);
-      #endif
-      
-      // 读卡提示音
-      beep(1, BEEP_SHORT_DURATION, 0);
-      
-      // 验证权限
-      bool allowed = false;
-      bool cacheable = false;
-      
-      if (wifiConnected) {
-        // 云端验证
-        allowed = verifyWithCloud(uid, cacheable);
-        
-        // 更新缓存
-        if (cacheable) {
-          updateCache(uid, allowed);
-        }
-      } else {
-        // 离线缓存验证
-        #ifdef DEBUG_ENABLED
-        Serial.println("网络离线，使用本地缓存验证");
-        #endif
-        allowed = verifyWithCache(uid);
-        
-        // 离线模式提示音（短鸣2次）
-        beep(2, BEEP_SHORT_DURATION, BEEP_INTERVAL);
-      }
-      
-      // 根据验证结果控制门锁
-      if (allowed) {
-        #ifdef DEBUG_ENABLED
-        Serial.println("权限验证通过，开门");
-        #endif
-        unlockDoor();
-        beep(1, BEEP_LONG_DURATION, 0);  // 成功提示音（长鸣1次）
-      } else {
-        #ifdef DEBUG_ENABLED
-        Serial.println("权限验证失败，拒绝访问");
-        #endif
-        beep(3, BEEP_SHORT_DURATION, BEEP_INTERVAL);  // 失败提示音（短鸣3次）
-      }
-      
-      // 防止重复读取同一张卡
-      delay(2000);
-    }
-  }
-  
-  // 短暂延迟
-  delay(10);
+  time_t now;
+  time(&now);
+  return (unsigned long)now;
 }
 
-// ==================== 硬件初始化 ====================
-void setupHardware() {
-  #ifdef DEBUG_ENABLED
-  Serial.println("初始化硬件...");
-  #endif
+// ===== 同步NTP时间 =====
+bool syncTime() {
+  Serial.println("🕐 Syncing time with NTP server...");
   
-  // 配置继电器引脚
-  pinMode(RELAY_PIN, OUTPUT);
-  digitalWrite(RELAY_PIN, RELAY_LOCK);  // 初始状态：锁定
+  configTime(GMT_OFFSET_SEC, DAYLIGHT_OFFSET_SEC, NTP_SERVER);
   
-  // 配置蜂鸣器引脚
-  pinMode(BUZZER_PIN, OUTPUT);
-  digitalWrite(BUZZER_PIN, LOW);
-  
-  // 配置出门按钮引脚（内部上拉）
-  pinMode(EXIT_BUTTON_PIN, INPUT_PULLUP);
-  
-  #ifdef DEBUG_ENABLED
-  Serial.println("硬件初始化完成");
-  #endif
-}
-
-// ==================== WiFi初始化 ====================
-void setupWiFi() {
-  #ifdef DEBUG_ENABLED
-  Serial.println("连接WiFi...");
-  Serial.print("SSID: ");
-  Serial.println(WIFI_SSID);
-  #endif
-  
-  WiFi.mode(WIFI_STA);
-  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
-  
-  unsigned long startTime = millis();
-  while (WiFi.status() != WL_CONNECTED && millis() - startTime < WIFI_CONNECT_TIMEOUT) {
+  // 等待时间同步（最多10秒）
+  int attempts = 0;
+  time_t now = 0;
+  while (now < 1000000000 && attempts < 20) {  // 确保时间戳合理
+    time(&now);
     delay(500);
-    #ifdef DEBUG_ENABLED
     Serial.print(".");
-    #endif
+    attempts++;
   }
+  Serial.println();
   
-  if (WiFi.status() == WL_CONNECTED) {
-    wifiConnected = true;
-    #ifdef DEBUG_ENABLED
-    Serial.println("\nWiFi连接成功！");
-    Serial.print("IP地址: ");
-    Serial.println(WiFi.localIP());
-    Serial.print("信号强度: ");
-    Serial.print(WiFi.RSSI());
-    Serial.println(" dBm");
-    #endif
-  } else {
-    wifiConnected = false;
-    #ifdef DEBUG_ENABLED
-    Serial.println("\nWiFi连接失败，将使用离线模式");
-    #endif
-  }
-}
-
-// ==================== NFC初始化 ====================
-void setupNFC() {
-  #ifdef DEBUG_ENABLED
-  Serial.println("初始化PN532 NFC模块...");
-  #endif
-  
-  nfc.begin();
-  
-  int retryCount = 0;
-  while (retryCount < NFC_INIT_RETRY) {
-    uint32_t versiondata = nfc.getFirmwareVersion();
-    if (versiondata) {
-      nfcInitialized = true;
-      #ifdef DEBUG_ENABLED
-      Serial.print("找到PN532芯片，固件版本: ");
-      Serial.print((versiondata >> 24) & 0xFF, HEX);
-      Serial.print(".");
-      Serial.println((versiondata >> 16) & 0xFF, HEX);
-      #endif
-      
-      // 配置PN532读取ISO14443A卡片
-      nfc.SAMConfig();
-      
-      #ifdef DEBUG_ENABLED
-      Serial.println("PN532初始化完成");
-      #endif
-      return;
-    }
-    
-    retryCount++;
-    #ifdef DEBUG_ENABLED
-    Serial.print("PN532初始化失败，重试 ");
-    Serial.print(retryCount);
-    Serial.print("/");
-    Serial.println(NFC_INIT_RETRY);
-    #endif
-    delay(1000);
-  }
-  
-  // 初始化失败
-  nfcInitialized = false;
-  #ifdef DEBUG_ENABLED
-  Serial.println("错误：PN532初始化失败！");
-  Serial.println("请检查：");
-  Serial.println("1. I2C接线是否正确（SDA=GPIO8, SCL=GPIO9）");
-  Serial.println("2. PN532供电是否正常");
-  Serial.println("3. PN532是否设置为I2C模式");
-  #endif
-  
-  // 故障提示音（持续鸣叫）
-  while (true) {
-    beep(3, BEEP_LONG_DURATION, BEEP_INTERVAL);
-    delay(2000);
-  }
-}
-
-// ==================== WiFi连接检查 ====================
-void checkWiFiConnection() {
-  // 每10秒检查一次WiFi状态
-  if (millis() - lastWiFiCheckTime >= WIFI_RECONNECT_INTERVAL) {
-    lastWiFiCheckTime = millis();
-    
-    if (WiFi.status() != WL_CONNECTED) {
-      if (wifiConnected) {
-        #ifdef DEBUG_ENABLED
-        Serial.println("WiFi连接断开，尝试重连...");
-        #endif
-        wifiConnected = false;
-      }
-      
-      WiFi.reconnect();
-      delay(1000);
-      
-      if (WiFi.status() == WL_CONNECTED) {
-        wifiConnected = true;
-        #ifdef DEBUG_ENABLED
-        Serial.println("WiFi重连成功！");
-        Serial.print("IP地址: ");
-        Serial.println(WiFi.localIP());
-        #endif
-      }
-    } else {
-      if (!wifiConnected) {
-        wifiConnected = true;
-        #ifdef DEBUG_ENABLED
-        Serial.println("WiFi连接已恢复");
-        #endif
-      }
-    }
-  }
-}
-
-// ==================== NFC卡片检测 ====================
-bool checkNFCCard(String& uid) {
-  if (!nfcInitialized) {
+  if (now < 1000000000) {
+    Serial.println("❌ Time sync failed");
+    timeSync = false;
     return false;
   }
   
-  uint8_t uidBytes[7];
-  uint8_t uidLength;
+  timeSync = true;
   
-  // 检测卡片（非阻塞模式，超时100ms）
-  bool success = nfc.readPassiveTargetID(PN532_MIFARE_ISO14443A, uidBytes, &uidLength, 100);
+  // 显示当前时间
+  struct tm timeinfo;
+  localtime_r(&now, &timeinfo);
+  char timeStr[64];
+  strftime(timeStr, sizeof(timeStr), "%Y-%m-%d %H:%M:%S", &timeinfo);
+  Serial.println("✅ Time synced: " + String(timeStr));
+  Serial.println("📅 Unix timestamp: " + String(now));
   
-  if (success) {
-    uid = uidToString(uidBytes, uidLength);
-    return true;
+  return true;
+}
+String uidToString(uint8_t *uid, uint8_t uidLength) {
+  String s = "";
+  for (int i = 0; i < uidLength; i++) {
+    if (uid[i] < 0x10) s += "0";
+    s += String(uid[i], HEX);
   }
-  
-  return false;
+  s.toUpperCase();
+  return s;
 }
 
-// ==================== UID转字符串 ====================
-String uidToString(uint8_t* uid, uint8_t uidLength) {
-  String uidStr = "";
-  for (uint8_t i = 0; i < uidLength; i++) {
-    if (uid[i] < 0x10) {
-      uidStr += "0";
+// ===== HMAC-SHA256签名 =====
+String generateSignature(String data) {
+  byte hmacResult[32];
+  
+  mbedtls_md_context_t ctx;
+  mbedtls_md_type_t md_type = MBEDTLS_MD_SHA256;
+  
+  mbedtls_md_init(&ctx);
+  mbedtls_md_setup(&ctx, mbedtls_md_info_from_type(md_type), 1);
+  mbedtls_md_hmac_starts(&ctx, (const unsigned char*)SECRET_KEY, strlen(SECRET_KEY));
+  mbedtls_md_hmac_update(&ctx, (const unsigned char*)data.c_str(), data.length());
+  mbedtls_md_hmac_finish(&ctx, hmacResult);
+  mbedtls_md_free(&ctx);
+  
+  String signature = "";
+  for (int i = 0; i < 32; i++) {
+    if (hmacResult[i] < 0x10) signature += "0";
+    signature += String(hmacResult[i], HEX);
+  }
+  signature.toLowerCase();
+  
+  return signature;
+}
+
+// ===== 查找缓存 =====
+int findInCache(String uid) {
+  unsigned long now = millis() / 1000;
+  
+  for (int i = 0; i < cacheCount; i++) {
+    if (cache[i].valid && cache[i].uid == uid) {
+      // 检查是否过期
+      if (now - cache[i].timestamp < CACHE_EXPIRE) {
+        return i;
+      } else {
+        // 过期，标记为无效
+        cache[i].valid = false;
+      }
     }
-    uidStr += String(uid[i], HEX);
   }
-  uidStr.toUpperCase();
-  return uidStr;
+  return -1;
 }
 
-// ==================== 云端权限验证 ====================
-bool verifyWithCloud(String uid, bool& cacheable) {
-  #ifdef DEBUG_ENABLED
-  Serial.println("向云端请求权限验证...");
-  #endif
+// ===== 添加到缓存 =====
+void addToCache(String uid, bool allowed) {
+  unsigned long now = millis() / 1000;
   
-  // 生成时间戳
-  unsigned long timestamp = millis() / 1000;  // 简化版时间戳（实际应使用NTP）
+  // 查找是否已存在
+  int index = -1;
+  for (int i = 0; i < cacheCount; i++) {
+    if (cache[i].uid == uid) {
+      index = i;
+      break;
+    }
+  }
   
-  // 生成签名
-  String signature = generateSignature(uid, DEVICE_ID, timestamp);
+  // 如果不存在且缓存未满，添加新条目
+  if (index == -1 && cacheCount < CACHE_SIZE) {
+    index = cacheCount;
+    cacheCount++;
+  }
+  
+  // 如果缓存已满，替换最旧的条目
+  if (index == -1) {
+    unsigned long oldestTime = now;
+    int oldestIndex = 0;
+    for (int i = 0; i < CACHE_SIZE; i++) {
+      if (cache[i].timestamp < oldestTime) {
+        oldestTime = cache[i].timestamp;
+        oldestIndex = i;
+      }
+    }
+    index = oldestIndex;
+  }
+  
+  // 更新缓存
+  cache[index].uid = uid;
+  cache[index].allowed = allowed;
+  cache[index].timestamp = now;
+  cache[index].valid = true;
+}
+
+// ===== 云端验证 =====
+bool checkCardCloud(String uid) {
+  if (!wifiConnected) {
+    Serial.println("WiFi not connected, using cache only");
+    return false;
+  }
+  
+  if (!timeSync) {
+    Serial.println("⚠️  Time not synced, attempting to sync...");
+    if (!syncTime()) {
+      Serial.println("❌ Cannot verify without time sync");
+      return false;
+    }
+  }
+  
+  HTTPClient http;
+  
+  // 构建请求URL
+  String url = String(API_BASE_URL) + "/access/check-card";
+  
+  // 获取真实的Unix时间戳
+  unsigned long timestamp = getCurrentTimestamp();
+  
+  if (timestamp == 0) {
+    Serial.println("❌ Invalid timestamp, cannot proceed");
+    return false;
+  }
+  
+  // 构建签名数据（注意：使用竖线分隔符）
+  String signData = uid + "|" + String(DEVICE_ID) + "|" + String(timestamp);
+  String signature = generateSignature(signData);
   
   // 构建JSON请求体
-  StaticJsonDocument<256> requestDoc;
-  requestDoc["uid"] = uid;
-  requestDoc["device_id"] = DEVICE_ID;
-  requestDoc["timestamp"] = timestamp;
-  requestDoc["signature"] = signature;
+  StaticJsonDocument<256> doc;
+  doc["uid"] = uid;
+  doc["device_id"] = DEVICE_ID;
+  doc["timestamp"] = timestamp;
+  doc["signature"] = signature;
   
   String requestBody;
-  serializeJson(requestDoc, requestBody);
+  serializeJson(doc, requestBody);
+  
+  Serial.println("Checking card with cloud: " + uid);
+  Serial.println("Timestamp: " + String(timestamp));
+  Serial.println("Request: " + requestBody);
   
   // 发送HTTP请求
-  String url = String(API_BASE_URL) + "/check-card";
   http.begin(url);
   http.addHeader("Content-Type", "application/json");
   http.addHeader("X-API-Key", API_KEY);
@@ -399,188 +241,294 @@ bool verifyWithCloud(String uid, bool& cacheable) {
   
   int httpCode = http.POST(requestBody);
   
-  #ifdef DEBUG_ENABLED
-  Serial.print("HTTP状态码: ");
-  Serial.println(httpCode);
-  #endif
+  bool allowed = false;
   
   if (httpCode == 200) {
     String response = http.getString();
+    Serial.println("Response: " + response);
     
-    #ifdef DEBUG_ENABLED
-    Serial.print("响应: ");
-    Serial.println(response);
-    #endif
-    
-    // 解析JSON响应
     StaticJsonDocument<512> responseDoc;
     DeserializationError error = deserializeJson(responseDoc, response);
     
     if (!error) {
-      bool success = responseDoc["success"] | false;
-      bool allow = responseDoc["allow"] | false;
-      cacheable = responseDoc["cacheable"] | false;
-      
-      http.end();
-      return success && allow;
+      if (responseDoc["success"] == true) {
+        // 注意：后端返回的是 "allow" 不是 "allowed"
+        allowed = responseDoc["allow"];
+        bool cacheable = responseDoc["cacheable"];
+        
+        // 只缓存可缓存的卡片
+        if (cacheable) {
+          addToCache(uid, allowed);
+          Serial.println("💾 Card cached");
+        }
+        
+        Serial.println(allowed ? "✅ Access ALLOWED (cloud)" : "❌ Access DENIED (cloud)");
+        
+        if (!allowed && responseDoc.containsKey("reason")) {
+          Serial.println("   Reason: " + String(responseDoc["reason"].as<const char*>()));
+        }
+      } else {
+        Serial.println("API returned error: " + String(responseDoc["message"].as<const char*>()));
+      }
     } else {
-      #ifdef DEBUG_ENABLED
-      Serial.println("JSON解析失败");
-      #endif
+      Serial.println("JSON parse error: " + String(error.c_str()));
     }
   } else {
-    #ifdef DEBUG_ENABLED
-    Serial.print("HTTP请求失败，错误码: ");
-    Serial.println(httpCode);
-    #endif
+    Serial.println("HTTP error: " + String(httpCode));
+    if (httpCode > 0) {
+      String response = http.getString();
+      Serial.println("Error response: " + response);
+    }
   }
   
   http.end();
-  
-  // 请求失败，使用缓存
-  return verifyWithCache(uid);
+  return allowed;
 }
 
-// ==================== 本地缓存验证 ====================
-bool verifyWithCache(String uid) {
-  unsigned long currentTime = millis() / 1000;
-  
-  for (int i = 0; i < cacheCount; i++) {
-    if (localCache[i].uid == uid) {
-      // 检查缓存是否过期
-      if (currentTime - localCache[i].timestamp < CACHE_EXPIRE) {
-        #ifdef DEBUG_ENABLED
-        Serial.println("缓存命中: " + uid);
-        Serial.print("允许访问: ");
-        Serial.println(localCache[i].allowed ? "是" : "否");
-        #endif
-        return localCache[i].allowed;
-      } else {
-        #ifdef DEBUG_ENABLED
-        Serial.println("缓存已过期: " + uid);
-        #endif
-      }
-    }
+// ===== 验证卡片 =====
+bool checkCard(String uid) {
+  // 1. 先查缓存
+  int cacheIndex = findInCache(uid);
+  if (cacheIndex >= 0) {
+    Serial.println("Found in cache: " + uid);
+    bool allowed = cache[cacheIndex].allowed;
+    Serial.println(allowed ? "✅ Access ALLOWED (cache)" : "❌ Access DENIED (cache)");
+    return allowed;
   }
   
-  #ifdef DEBUG_ENABLED
-  Serial.println("缓存未命中: " + uid);
-  #endif
+  // 2. 缓存未命中，查询云端
+  if (wifiConnected) {
+    return checkCardCloud(uid);
+  }
+  
+  // 3. WiFi未连接，拒绝访问
+  Serial.println("❌ Access DENIED (no cache, no WiFi)");
   return false;
 }
 
-// ==================== 更新本地缓存 ====================
-void updateCache(String uid, bool allowed) {
-  unsigned long currentTime = millis() / 1000;
-  
-  // 查找是否已存在
-  for (int i = 0; i < cacheCount; i++) {
-    if (localCache[i].uid == uid) {
-      localCache[i].allowed = allowed;
-      localCache[i].timestamp = currentTime;
-      #ifdef DEBUG_ENABLED
-      Serial.println("更新缓存: " + uid);
-      #endif
-      return;
-    }
-  }
-  
-  // 添加新条目
-  if (cacheCount < CACHE_SIZE) {
-    localCache[cacheCount].uid = uid;
-    localCache[cacheCount].allowed = allowed;
-    localCache[cacheCount].timestamp = currentTime;
-    cacheCount++;
-    #ifdef DEBUG_ENABLED
-    Serial.println("添加缓存: " + uid);
-    #endif
-  } else {
-    // 缓存已满，删除最旧的条目（FIFO）
-    for (int i = 0; i < CACHE_SIZE - 1; i++) {
-      localCache[i] = localCache[i + 1];
-    }
-    localCache[CACHE_SIZE - 1].uid = uid;
-    localCache[CACHE_SIZE - 1].allowed = allowed;
-    localCache[CACHE_SIZE - 1].timestamp = currentTime;
-    #ifdef DEBUG_ENABLED
-    Serial.println("缓存已满，替换最旧条目: " + uid);
-    #endif
-  }
-}
-
-// ==================== 开门 ====================
+// ===== 开门 =====
 void unlockDoor() {
-  digitalWrite(RELAY_PIN, RELAY_UNLOCK);
-  doorUnlocked = true;
-  unlockStartTime = millis();
+  Serial.println("🔓 Unlocking door...");
   
-  #ifdef DEBUG_ENABLED
-  Serial.println("门锁已打开");
-  #endif
+  digitalWrite(RELAY_PIN, HIGH);
+  digitalWrite(BUZZER_PIN, HIGH);
+  delay(100);
+  digitalWrite(BUZZER_PIN, LOW);
+  
+  delay(UNLOCK_DURATION);
+  
+  digitalWrite(RELAY_PIN, LOW);
+  Serial.println("🔒 Door locked");
 }
 
-// ==================== 锁门 ====================
-void lockDoor() {
-  digitalWrite(RELAY_PIN, RELAY_LOCK);
-  doorUnlocked = false;
-  
-  #ifdef DEBUG_ENABLED
-  Serial.println("门锁已关闭");
-  #endif
-}
-
-// ==================== 出门按钮处理 ====================
-void handleExitButton() {
-  int reading = digitalRead(EXIT_BUTTON_PIN);
-  
-  // 防抖处理
-  if (reading != lastButtonState) {
-    lastDebounceTime = millis();
-  }
-  
-  if ((millis() - lastDebounceTime) > BUTTON_DEBOUNCE_DELAY) {
-    if (reading == LOW && lastButtonState == HIGH) {
-      // 按钮按下
-      #ifdef DEBUG_ENABLED
-      Serial.println("出门按钮按下");
-      #endif
-      
-      unlockDoor();
-      beep(1, BEEP_SHORT_DURATION, 0);  // 按钮确认提示音
-    }
-  }
-  
-  lastButtonState = reading;
-}
-
-// ==================== 蜂鸣器控制 ====================
-void beep(int times, int duration, int interval) {
-  for (int i = 0; i < times; i++) {
+// ===== 蜂鸣器：拒绝 =====
+void beepDenied() {
+  for (int i = 0; i < 3; i++) {
     digitalWrite(BUZZER_PIN, HIGH);
-    delay(duration);
+    delay(100);
     digitalWrite(BUZZER_PIN, LOW);
+    delay(100);
+  }
+}
+
+// ===== 连接WiFi =====
+void connectWiFi() {
+  Serial.println("\n🌐 Connecting to WiFi: " + String(WIFI_SSID));
+  
+  WiFi.mode(WIFI_STA);
+  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+  
+  int attempts = 0;
+  while (WiFi.status() != WL_CONNECTED && attempts < 20) {
+    delay(500);
+    Serial.print(".");
+    attempts++;
+  }
+  
+  if (WiFi.status() == WL_CONNECTED) {
+    wifiConnected = true;
+    Serial.println("\n✅ WiFi connected!");
+    Serial.println("📍 IP address: " + WiFi.localIP().toString());
+    Serial.println("📶 Signal strength: " + String(WiFi.RSSI()) + " dBm");
+  } else {
+    wifiConnected = false;
+    Serial.println("\n❌ WiFi connection failed");
+    Serial.println("⚠️  Running in offline mode (cache only)");
+  }
+}
+
+// ===== 发送心跳包 =====
+void sendHeartbeat() {
+  if (!wifiConnected) {
+    return;
+  }
+  
+  // 检查是否到了发送心跳的时间
+  if (millis() - lastHeartbeat < HEARTBEAT_INTERVAL) {
+    return;
+  }
+  
+  lastHeartbeat = millis();
+  
+  Serial.println("\n💓 Sending heartbeat...");
+  
+  HTTPClient http;
+  String url = String(API_BASE_URL) + "/heartbeat";
+  
+  // 心跳端点只需要空的JSON body
+  String requestBody = "{}";
+  
+  http.begin(url);
+  http.addHeader("Content-Type", "application/json");
+  http.addHeader("X-API-Key", API_KEY);
+  http.addHeader("X-Device-ID", DEVICE_ID);
+  http.setTimeout(5000);
+  
+  int httpCode = http.POST(requestBody);
+  
+  if (httpCode == 200) {
+    Serial.println("✅ Heartbeat sent successfully");
+  } else {
+    Serial.println("⚠️  Heartbeat failed (HTTP " + String(httpCode) + ")");
+  }
+  
+  http.end();
+}
+
+// ===== 检查WiFi状态 =====
+void checkWiFiStatus() {
+  if (millis() - lastWiFiCheck > WIFI_CHECK_INTERVAL) {
+    lastWiFiCheck = millis();
     
-    if (i < times - 1) {
-      delay(interval);
+    if (WiFi.status() != WL_CONNECTED) {
+      if (wifiConnected) {
+        Serial.println("⚠️  WiFi disconnected, attempting reconnect...");
+        wifiConnected = false;
+        timeSync = false;  // WiFi断开时重置时间同步状态
+      }
+      connectWiFi();
+      if (wifiConnected) {
+        syncTime();  // 重新连接后同步时间
+      }
+    } else {
+      if (!wifiConnected) {
+        Serial.println("✅ WiFi reconnected!");
+        wifiConnected = true;
+        syncTime();  // 重新连接后同步时间
+      }
+      
+      // 定期重新同步时间（每小时一次）
+      static unsigned long lastTimeSync = 0;
+      if (timeSync && (millis() - lastTimeSync > 3600000)) {  // 1小时
+        Serial.println("🕐 Re-syncing time...");
+        syncTime();
+        lastTimeSync = millis();
+      }
     }
   }
 }
 
-// ==================== 生成HMAC-SHA256签名 ====================
-String generateSignature(String uid, String deviceId, unsigned long timestamp) {
-  // 构建待签名字符串
-  String signString = uid + "|" + deviceId + "|" + String(timestamp);
+// ===== Setup =====
+void setup() {
+  Serial.begin(SERIAL_BAUD_RATE);
+  delay(1000);
   
-  // 注意：这里需要实现HMAC-SHA256算法
-  // ESP32可以使用mbedtls库或第三方库
-  // 简化版本：返回占位符（实际部署时需要实现真实签名）
+  Serial.println("\n\n========================================");
+  Serial.println("ESP32 NFC Cloud Access Control System");
+  Serial.println("========================================");
   
-  // TODO: 实现真实的HMAC-SHA256签名
-  // 可以使用: https://github.com/h2zero/ESP32-BLE-Keyboard/blob/master/examples/SendKeyStrokes/SendKeyStrokes.ino
+  // 初始化GPIO
+  pinMode(RELAY_PIN, OUTPUT);
+  pinMode(EXIT_BUTTON_PIN, INPUT_PULLUP);
+  pinMode(BUZZER_PIN, OUTPUT);
   
-  #ifdef DEBUG_ENABLED
-  Serial.println("警告：使用简化版签名（生产环境需实现HMAC-SHA256）");
-  #endif
+  digitalWrite(RELAY_PIN, LOW);
+  digitalWrite(BUZZER_PIN, LOW);
   
-  return "simplified_signature_placeholder";
+  Serial.println("✅ GPIO initialized");
+  
+  // 初始化I2C
+  Wire.begin(PN532_SDA_PIN, PN532_SCL_PIN);
+  Serial.println("✅ I2C initialized (SDA:" + String(PN532_SDA_PIN) + ", SCL:" + String(PN532_SCL_PIN) + ")");
+  
+  // 初始化NFC
+  Serial.println("🔍 Initializing PN532...");
+  nfc.begin();
+  
+  uint32_t versiondata = nfc.getFirmwareVersion();
+  if (!versiondata) {
+    Serial.println("⚠️  PN532 not found, continuing without NFC");
+  } else {
+    Serial.print("✅ PN532 found! Firmware ver. ");
+    Serial.print((versiondata >> 16) & 0xFF, DEC);
+    Serial.print('.');
+    Serial.println((versiondata >> 8) & 0xFF, DEC);
+    
+    nfc.SAMConfig();
+  }
+  
+  // 连接WiFi
+  connectWiFi();
+  
+  // 同步时间
+  if (wifiConnected) {
+    syncTime();
+  }
+  
+  // 启动提示音
+  digitalWrite(BUZZER_PIN, HIGH);
+  delay(200);
+  digitalWrite(BUZZER_PIN, LOW);
+  
+  Serial.println("\n========================================");
+  Serial.println("✅ System Ready!");
+  Serial.println("📋 Device ID: " + String(DEVICE_ID));
+  Serial.println("🌐 API URL: " + String(API_BASE_URL));
+  Serial.println("💾 Cache size: " + String(CACHE_SIZE));
+  Serial.println("🕐 Time synced: " + String(timeSync ? "Yes" : "No"));
+  Serial.println("========================================\n");
+}
+
+// ===== Loop =====
+void loop() {
+  // 检查WiFi状态
+  checkWiFiStatus();
+  
+  // 发送心跳包
+  sendHeartbeat();
+  
+  // 检查出门按钮
+  if (digitalRead(EXIT_BUTTON_PIN) == LOW) {
+    Serial.println("🚪 Exit button pressed");
+    unlockDoor();
+    delay(500);
+  }
+  
+  // 扫描NFC卡片
+  uint8_t uid[7];
+  uint8_t uidLength;
+  
+  if (nfc.readPassiveTargetID(PN532_MIFARE_ISO14443A, uid, &uidLength, 50)) {
+    String cardUID = uidToString(uid, uidLength);
+    
+    Serial.println("\n📇 Card detected: " + cardUID);
+    lastCard = cardUID;
+    lastAccessTime = millis();
+    
+    // 验证卡片
+    bool allowed = checkCard(cardUID);
+    
+    if (allowed) {
+      lastResult = "ALLOWED";
+      unlockDoor();
+    } else {
+      lastResult = "DENIED";
+      beepDenied();
+    }
+    
+    // 防止重复读取
+    delay(1000);
+  }
+  
+  delay(100);
 }

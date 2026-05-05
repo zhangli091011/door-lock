@@ -10,3 +10,4 @@ export { createAccessRoutes } from './accessRoutes';
 export { createCardRoutes } from './cardRoutes';
 export { createDeviceRoutes } from './deviceRoutes';
 export { createLogRoutes } from './logRoutes';
+export { createHeartbeatRoutes } from './heartbeatRoutes';

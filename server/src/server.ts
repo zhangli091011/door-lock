@@ -24,6 +24,7 @@ import {
   createCardRoutes,
   createDeviceRoutes,
   createLogRoutes,
+  createHeartbeatRoutes,
 } from './routes';
 
 // Load environment variables
@@ -160,6 +161,7 @@ function createApp(db: Database): Application {
   app.use('/api/cards', createCardRoutes(db));
   app.use('/api/devices', createDeviceRoutes(db));
   app.use('/api/logs', logRoutes);
+  app.use('/api', createHeartbeatRoutes(db));  // 心跳端点
   
   // Mount status endpoint at /api/status (from logRoutes)
   // This allows both /api/logs/status and /api/status to work

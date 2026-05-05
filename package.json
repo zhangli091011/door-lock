@@ -1,0 +1,26 @@
+{
+  "name": "doorlock",
+  "version": "1.0.0",
+  "description": "基于ESP32-S3和PN532 NFC模块的智能门禁解决方案，支持云端权限管理、离线缓存和Web管理界面。",
+  "main": "test-card-and-log-features.js",
+  "directories": {
+    "doc": "docs"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/zhangli091011/door-lock.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/zhangli091011/door-lock/issues"
+  },
+  "homepage": "https://github.com/zhangli091011/door-lock#readme",
+  "dependencies": {
+    "axios": "^1.16.0"
+  }
+}

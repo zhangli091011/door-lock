@@ -271,6 +271,49 @@ main {
     filter: invert(1);
 }
 
+/* Device Credentials Modal */
+.font-monospace {
+    font-family: 'Courier New', Courier, monospace;
+    font-size: 0.9rem;
+}
+
+#deviceCredentialsModal .modal-header {
+    background-color: var(--success-color);
+}
+
+#deviceCredentialsModal .alert {
+    border-left: 4px solid;
+}
+
+#deviceCredentialsModal .alert-warning {
+    border-left-color: var(--warning-color);
+    background-color: #fff3cd;
+}
+
+#deviceCredentialsModal .alert-info {
+    border-left-color: var(--info-color);
+    background-color: #cff4fc;
+}
+
+#deviceCredentialsModal .input-group .form-control {
+    background-color: #f8f9fa;
+    font-weight: 500;
+}
+
+#deviceCredentialsModal .form-label {
+    color: var(--dark-color);
+    font-size: 0.95rem;
+    margin-bottom: 8px;
+}
+
+#deviceCredentialsModal ol {
+    padding-left: 1.2rem;
+}
+
+#deviceCredentialsModal ol li {
+    margin-bottom: 0.5rem;
+}
+
 /* ===========================
    Loading Spinner
    =========================== */
